@@ -1,0 +1,161 @@
+# Convert Scrogster's JAGS model to greta model
+library(greta)
+
+# make / adjust data object
+n_obs <- hier_dat$Nobs
+site_code <- hier_dat$site.code
+n_sites <- length(unique(hier_dat$site.code))
+
+
+#define priors
+mu_rabbits <- dlnorm(log(4), 2)
+site_sd <- lognormal(0,1)
+r_site_effect <- normal(0, site_sd, dim = n_sites)
+
+
+
+design <- as.matrix(time_vars)
+coef_names <- colnames(design)
+
+betas <- normal(0, 10, dim = ncol(time_vars)) # should be n cols in model matrix
+
+env_effect <- design %*% betas
+
+# organise data like greta wants it
+kai <- hier_dat$rabbit.count
+
+#process model
+
+site_r_eff <- normal(r_mean, site_sd, dim = n_sites)
+
+
+# observation model
+distribution(kai) <- negative_binomial(size = , prob = mu_rabbits, dim = n_obs)
+
+
+
+
+
+model{
+  for(k in 1:sites){
+    #process model
+    #starting abund (priors)
+    site.r.eff[k]~dnorm(r.mean , tau.site) #random site effects on r.max for fox
+    site.r.eff.rabbits[k]~dnorm(r.mean.rabbits, tau.site.rabbits) #random site effects on r.max for rabbit
+    
+    #non-heirarchically centred versions of the random effects for plotting
+    site.r.eff.centered[k]<-site.r.eff[k]-r.mean
+    site.r.eff.rabbits.centered[k]<-site.r.eff.rabbits[k]-r.mean.rabbits
+    mu.fox[5, k]~dlnorm(log(0.25), 1.5)
+    mu.rabbits[1, k]~dlnorm(log(4), 2)
+    for(t in 6:40){
+      ##-- process sub-model for foxes
+      r.fox.expected[t, k]<- log(mu.rabbits[t-food.lag, k])* beta[1] #numerical response to rabbit abundance
+      +log(mu.fox[t-1, k])*beta[2] #dense depend.
+      +rain_array[k,t,fox.lag]/10 *beta[3]
+      +winter[t]*beta[4]  #effect of winter on r
+      +site.r.eff[k]
+      r.fox[t, k]~dnorm(r.fox.expected[t, k], tau.proc)
+      mu.fox[t, k]<-mu.fox[t-1, k]*exp(r.fox[t, k])  
+    } #t
+    
+    for(tt in 2:40){
+      ##---process sub-model for rabbits
+      r.rabbits.expected[tt, k]<-  log(mu.rabbits[tt-1, k])* beta[5] 
+      +rain_array[k,tt,rabbit.lag]/10*beta[6] #rain effect of r.
+      +winter[tt]*beta[7] #effect of winter on rabbit r.
+      +postrip[tt]*beta[8] #ripping effect on rabbit r.
+      +site.r.eff.rabbits[k]
+      
+      r.rabbits[tt, k]~dnorm(r.rabbits.expected[tt, k], tau.proc.rabbits)
+      mu.rabbits[tt, k]<-mu.rabbits[tt-1, k]*exp(r.rabbits[tt, k]) 
+    } #tt
+    
+  } #k
+  ###################################
+  #observation models
+  ###################################
+  for(i in 1:Nobs){
+    
+    surv.err.fox[i]  ~dnorm(0, tau.survey.fox)
+    surv.err.rabbit[i] ~dnorm(0, tau.survey.rabbit)
+    
+    zero.fox[i]~dbern(p_zinf.fox) #indicator for structural non-zero
+    log(lambda.fox[i])<-log(mu.fox[obs_time[i], site.code[i]] ) +  log(trans.length[i]/1000) + surv.err.fox[i]
+    exp.fox[i]<-lambda.fox[i]*(1-zero.fox[i]) + 1e-10*zero.fox[i]
+    fox.count[i]~dpois(exp.fox[i]) #poisson obs model
+    fox.fake[i]~dpois(exp.fox[i])
+    
+    #real and fake chi-sq discrepancy
+    chi2.fox.real[i]<-pow((fox.count[i]-exp.fox[i]), 2)/(exp.fox[i]+0.5)
+    chi2.fox.fake[i]<-pow((fox.fake[i]-exp.fox[i]), 2)/(exp.fox[i]+0.5)
+    
+    zero.rabbit[i]~dbern(p_zinf.rabbit) #indicator for structural non-zero
+    log(lambda.rabbit[i])<-log(mu.rabbits[obs_time[i], site.code[i]] ) +  log(trans.length[i]/1000) + surv.err.rabbit[i]
+    exp.rabbit[i]<-lambda.rabbit[i]*(1-zero.rabbit[i]) + 1e-10*zero.rabbit[i]
+    rabbit.count[i]~dpois(exp.rabbit[i]) #poisson obs model
+    rabbit.fake[i]~dpois(exp.rabbit[i]) 
+    
+    #real and fake chi-sq discrepancy
+    chi2.rabbit.real[i]<-pow((rabbit.count[i]-exp.rabbit[i]), 2)/(exp.rabbit[i]+0.5)
+    chi2.rabbit.fake[i]<-pow((rabbit.fake[i]-exp.rabbit[i]), 2)/(exp.rabbit[i]+0.5)
+    
+  }#i
+  ###################################
+  #test statistics of posterior predictive checks
+  fit.fox<-sum(chi2.fox.real[])
+  fit.fox.fake<-sum(chi2.fox.fake[])
+  fox.fake.zeroes<-Nobs-sum(step(fox.fake[]-1))
+  
+  fit.rabbit<-sum(chi2.rabbit.real[])
+  fit.rabbit.fake<-sum(chi2.rabbit.fake[])
+  rabbit.fake.zeroes<-Nobs-sum(step(rabbit.fake[]-1))
+  
+  ###################################
+  #lagging indicator variables
+  ###################################
+  
+  fox.lag~dcat(rep(1, 30))
+  rabbit.lag~dcat(rep(1, 30))
+  food.lag~dcat(rep(1, 5))
+  
+  ###################################
+  #other priors
+  ###################################
+  
+  r.mean~dt(0, pow(2.5, -2), 1)
+  r.mean.rabbits~dt(0, pow(2.5, -2), 1)
+  
+  for(u in 1:8){beta[u]~dt(0, pow(2.5, -2), 1) }
+  
+  sigma.proc~dt(0, 1, 4)T(0, ) 
+  tau.proc<-pow(sigma.proc, -2)
+  
+  sigma.proc.rabbits~dt(0, 1, 4)T(0, ) 
+  tau.proc.rabbits<-pow(sigma.proc.rabbits, -2)
+  
+  sigma.site~dt(0, 1, 4)T(0, ) 
+  tau.site<-pow(sigma.site, -2)
+  
+  sigma.site.rabbits~dt(0, 1, 4)T(0, ) 
+  tau.site.rabbits<-pow(sigma.site.rabbits, -2)
+  
+  sigma.survey.fox~dt(0, 1, 4)T(0, ) 
+  tau.survey.fox<-pow(sigma.survey.rabbit, -2)
+  
+  sigma.survey.rabbit~dt(0, 1, 4)T(0, ) 
+  tau.survey.rabbit<-pow(sigma.survey.rabbit, -2)
+  
+  #storing sigmas in a vector for monitoring
+  sigma[1]<-sigma.proc
+  sigma[2]<-sigma.proc.rabbits
+  sigma[3]<-sigma.site
+  sigma[4]<-sigma.site.rabbits
+  sigma[5]<-sigma.survey.fox
+  sigma[6]<-sigma.survey.rabbit
+  
+  #zero inflation parameter for observation
+  p_zinf.fox~dbeta(1, 1)
+  p_zinf.rabbit~dbeta(1, 1)
+  
+}
