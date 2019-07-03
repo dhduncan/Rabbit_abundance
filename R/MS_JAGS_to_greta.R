@@ -140,17 +140,34 @@ log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) + 
 expected_rabbits <- exp(log_lambda_rabbits)
 distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
-m <- model(winter_coef, postrip_coef, rain_coef, auto_coef_p1)
+
+set.seed(2019-07-03)
 
 # it's a bit hard to specify initial values here, as some of these (particularly
 # proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
 # if they are too large, causing problems tuning the model during warmup
-inits <- replicate(4, initials(auto_coef = 0.001,
-                               proc_sd_rabbits = 0.001,
-                               survey_sd_rabbit = 0.001,
-                               site_sd_rabbits = 0.001),
+inits <- replicate(4,
+                   initials(auto_coef = runif(1, -0.1, 0.1),
+                            proc_sd_rabbits = runif(1, 0, 0.1),
+                            survey_sd_rabbit = runif(1, 0, 0.1),
+                            site_sd_rabbits = runif(1, 0, 0.1),
+                            site_r_effect_rabbits_raw = rnorm(n_sites),
+                            r_mean_rabbits = rnorm(1, 0, 0.1),
+                            rain_coef = rnorm(1, 0, 0.1),
+                            winter_coef = rnorm(1, 0, 0.1),
+                            postrip_coef = rnorm(1, 0, 0.1),
+                            temporal_deviates_raw = array(
+                              rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
+                              dim = dim(temporal_deviates_raw)
+                            ),
+                            surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
+                   ),
                    simplify = FALSE)
 
+# check inits to see if they would yield some reasonable number of rabbits
+# tmp <- calculate(log_mu_rabbits, values = inits[[1]])
+
+m <- model(winter_coef, postrip_coef, rain_coef, auto_coef_p1)
 draws <- mcmc(m, initial_values = inits)
 plot(draws)
 
