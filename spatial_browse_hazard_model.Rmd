@@ -1,0 +1,241 @@
+---
+title: 'A spatio-temporal model of browsing hazard from an invasive herbivore'
+header-includes:
+   - \usepackage[nolists,tablesfirst, nomarkers]{endfloat}
+   - \usepackage{setspace}\doublespacing
+   - \usepackage{lineno}
+   - \usepackage[textsize=tiny, backgroundcolor=white]{todonotes}
+   - \linenumbers
+output:
+  pdf_document: 
+      keep_tex: true
+      latex_engine: xelatex
+  fig_width: 5.5
+  fig_caption: yes
+  word_document:
+    reference_docx: Template.docx
+fontsize: 10pt
+geometry: margin=1.0in
+csl: journal-of-applied-ecology.csl
+bibliography: rabbits.bib
+---
+
+David H. Duncan^1^, Nick Golding^1^, Michael P. Scroggie^2^, Peter A. Vesk^1^.
+
+^1^*School of BioSciences, The University of Melbourne, Parkville, Victoria, Australia.*
+
+^2^*Arthur Rylah Institute for Environmental Research, Department of Environment, Land, Water and Planning, Heidelberg, Victoria, Australia.*
+
+Correspondence: David Duncan.  Email: david.duncan@unimelb.edu.au; Phone: +61 3 9035 8033; ORCID: http://orcid.org/0000-0003-4411-8214.
+
+\newpage
+
+# Abstract
+
+
+
+
+**Keywords:** spotlight counts.
+
+**Running title:** *Modelling rabbit browse hazard*
+
+\newpage
+
+# Introduction
+
+The Wild European rabbit *Oryctolagus cuniculus* invaded much of the Australian continent with devastating economic and environmental consequences.  
+
+Recognised as major pest in Australia for well over a century. Rabbits have successfully and prolifically invaded almost all ecosystems in the southern 2/3 of the 
+
+To agriculture but also to conservation of biodiversity. Named as a threat to 21% (322) of listed species of plants and animals in Australia [@kearney_threats_2018].  Summarise mechanisms by which threat is manifest
+
+Quantify the investment in controlling rabbits in \$ and also in years and person hours if it were possible  [@cooke2013economic]
+
+[@williams_managing_1995]
+
+General trends in rabbit numbers in Australia peak, 
+
+Concerted efforts to destroy rabbit warrens in the wake of the RHD front proved to have lasting benefits [e.g., @mcphee_long-term_2010; @ramsey_recolonisation_2014]
+
+In semi arid Australia rabbit abundances are thought to have been reduced by around 90% compared to preRHD levels [@bruce_epidemiology_2004]
+
+Nonetheless rabbits even at densities lower than one rabbit ha$^{-1}$ have been repeatedly shown capable of preventing regeneration [@bird_damage_2012]
+
+Rabbit abundance has been regularly estimated using spotlight transect counts throughout much of Australia for up to 50 years [@roydufresne_australian_nodate]. 
+
+>Until recently those data had not been used to statistically model the population dynamics and their ecological implications.  REALLY?
+
+[@brown_models_2019] recently used Roy-Dufresne et al's national dataset to model continental abundance trends, and Scroggie et al [-@scroggie_invasive_2018] tested whether a dynamic population model for rabbit abundance could explain the abundance of an introduced predator. 
+
+Whilst many worthwhile quantitative studies have been undertaken on rabbit densities and their implications for agriculture, etc etc etc,
+
+Rabbits are implicated in the chronic regeneration failure of endangered ecological community known as *Buloke Woodlands of the Riverina and Murray Darling Depression Bioregions* [@sandell2011; @bennett_how_2019]. 
+
+Models of rabbit populations tend to be either focused on rabbit abundance without explicit consideration of disease, or on disease epidemiology 
+
+
+
+
+
+
+
+In the Mallee Parks of Victoria's semi-arid north west, rabbit count data have been collected since the 1970s. The raw data have been summarised in various documents, such as the Total Grazing Management Plan [@taylor2016] and the Wyperfeld Rabbit Strategy [@PV2010], and Sandell [-@sandell2011]. Operationally, Parks Vic staff tend to work from the annual or per survey summaries of rabbit observations to guide control activities and reporting against the targets expressed in the above named strategic docs. One concrete way in which the data are consumed is as summary maps showing raw change from previous surveys. 
+
+Can a statistical model help us understand, with uncertainty, whether the rabbit targets are being met?
+
+If we can reliably identify low rabbit areas, may help to target survey and experimentation to test their influence on regeneration failure?
+
+Parks Victoria have used their rabbit count data to assess progress against their control targets and to direct rabbit control measures such as warren ripping and fumigation.
+
+Rabbit transects follow existing public and management vehicle tracks, 
+
+A spatio-temporally explicit model of rabbits will help understand where we should look either for rabbit problems, or for 
+
+
+# Materials and methods
+
+## Transect locations and management histories
+
+
+
+## Spotlight counts
+Parks Victoria staff have counted rabbits via spotlighting using a standard method since November of 1970 [see also @scroggie_invasive_2018 for other areas of Victoria].
+
+The surveys commenced at least 30 minutes after dark on nights with mild conditions. While a driver piloted the vehicle at a constant 15 km h^-1^ along fixed transects, an observer searched for rabbits a 100W narrow-beam spotlight. The observer scanned a forward 90^o^ arc (see Figure {fig:goPro} for indicative view), occasionally sweeping the full forward 180^o^ area. The method was not altered for those transects which may border private land, that is, the survey encompassed both tenures. For transects that intersect others, or turn back on themselves, no adjustment was made to search areas, but in the case of transects turning back on themselves the observer was expected to be alert to the potential for double counting.
+
+Whilst the beam is expected to reach up to 200 m under optimal conditions, the effective distance is thought to be considerably shorter, perhaps 80 m each side of the transect. The height of the grass sward and vegetation structure are expected to influence observations, but we are aware of no observer or sward data that would allow us to model detection probabilities for these data.
+
+There are four temporal phases which need to be explained, the last of which began in September 2016:
+
+### Early period 1970–-1986 
+One-three counts were made approximately monthly along three transects, a 5.6 km segment of Jenkins Track, 12 kms of Racecourse Track, and a 5 km transect referred to as ''West of Blowhole''.  The Jenkins Track transect was extended to 10 km from October 1975.  Through this period replicate counts were common, either on consecutive dates or only a few days apart. 
+
+This first phase as we have defined it comprises two survey periods separated by a lapse between Spring of 1979 and early 1982.
+
+It is clear from Figure {fig:full_summary} that this period constitutes a distinct phase of extremely high rabbit densities that are in stark contrast with the data post 1995. The early phase was relatively poorly documented however, and even the location of the 'West of Blowhole' transect is a mystery to current area staff.
+
+### 1986–-Spring 1995
+No counts were made during this period.
+
+### Main tranche: Spring 1995–-2016
+Regular counting was resumed in October 1995 to coincide with active measures to control rabbit numbers, including the release of Rabbit Hemorrhagic Disease (RHD), which was first detected in rabbits from the Wyperfeld area in 1996.
+
+For this phase, the number of transects was increased to 15, ranging between 3--20 km in length, and the data began to be recorded in 1 km transect segments. A further transect was added around 2000.
+
+The surveys took place every 2--3 months between 1995 and 2008 with virtually no replication. From March 2009 onwards the frequency was dropped to two surveys per year, one around March and the other in September, but in each case the count was repeated on consecutive nights.
+
+### A change to effective area of search post September 2016?
+A note toward the future as much as anything, since September of 2016 the observations have been made by the passenger from within an enclosed cabin, using a fixed roof-mounted spotlight on the passenger side. The observer is seated within the cabin and operates the spotlight by a swivel handle (Parks Victoria Job Safety Assessment, unpublished).  
+
+These changes were made due to OHS concerns with the tray-mounted observation rig (Dale Fuller, pers. comm.). The change is expected to be temporary, awaiting approval from VicRoads for a new spotlighting rig for the utility tray. I imagine that the change would lower the observer eye-level by more than a metre, and could be expected to reduce the effective search area.  If this method persists we might expect the change to be reflected in the data.
+
+### Summary comments about the data series}\label{sec:summary_comments}
+From the full data series a composite summary can be constructed of the average number of rabbits observed per spotlight km for each month from 1970--2017 (Figure {fig:full_summary}) The rabbit density data are log scaled, but even so the order-of-magnitude decrease between 1983 and 1995 stands out. Unfortunately, there are no empirical data from the crucial period immediately prior to this campaign of rabbit control against which we might hope to assess the intervention. Parks' own graphical summaries tend to treat the time-series as continuous, when in fact there is a decade long gap.
+##Statistical model
+
+**To account for uneven timing and survey effort amongst transects, the spotlight counts of rabbits and foxes were temporally discretized into half-yearly intervals, depending on whether they were made in the first (January--June) or second (July--December) half of each calendar year. Hence, changes in populations were attributed by the model to either the June--July or December--January periods: these seasonal periods of change are referred to hereafter as 'winter' and 'summer', respectively.**
+
+### Process model
+
+\subsection{Imperfect detection}
+The rabbit count data embody both random Poisson error in the number of rabbits occupying a 1-km transect segment ($N$), and additional error readily conceivable as imperfect detection ($p$). 
+
+The recent continental scale abundance models of rabbits by Brown et al., [@brown_models_2019] use $N$-mixture models [@royle_n-mixture_2004] to simultaneously estimate abundance $N$ and detectability $p$ from a much larger dataset of the same type that we treat here. However, without empirical data to directly inform either a variable or constant detectability parameter, it is not clear that the $N$-mixture approach is superior to modelling $N$ as an uncorrected index of abundance [@barker_reliability_2018].
+
+For our data, one can imagine that the conditional probability of an observer seeing rabbit may depend upon factors that are relatively stable through the time period but variable over space such as abundance of low shrubby vegetation, and other factors that suggest variable detectability at a given site through time such as the volume and height of grassy biomass. Without data to represent those elements, or their relationship with detection of a rabbit using the spotlight technique given its presence (though recapture probabilities in a trapping context were reported in @fordham_european_2012), we opted to model uncorrected abundance $N$ here. 
+
+
+
+**Scroggie's text, leave as example equation integration for the time being **
+
+>The prevailing transect-level abundances $(\rho_{jt})$ of rabbits at ...:
+
+\begin{align}
+\rho_{jt}=\rho_{jt-1} e^{r_{jt}^{rabbit}}
+\end{align}
+
+>where $\rho_{jt}$ is the expected mean spotlight count of rabbits at the $j^{th}$ transect at time $t$, and $r_{jt}^{rabbit}$ is the  rate of increase for the $j^{th}$ rabbit population during the interval $[t-1,t]$. We decomposed $r_{jt}^{rabbit}$ into components attributable to transect- and time-level covariates ...
+
+\begin{align}
+r_{jt}^{rabbit} &=\bar{r}_{rabbit}  + \beta_{1}\log{\rho_{t-1}} + \beta_{2}\mbox{rain}_{jt} +\beta_{3}\mbox{winter}_{t}+\beta_{4}\mbox{ripping}_{jt} +\zeta_{j}^{rabbit} +\epsilon_{t}^{rabbit}
+\end{align}
+
+>where $\bar{r}_{rabbit}$ is the mean rate of increase, and $\beta_{1}-\beta_{4}$ are regression parameters describing the strength of density dependence in the rate of increase of the rabbit population, ...
+
+
+
+### Observation model
+
+
+
+```{r message=FALSE, results='hide', echo=FALSE, cache=FALSE}
+#load results so we can use inline r to insert resulting numerical results
+
+```
+
+### Priors
+
+
+
+### Model fitting and checking
+
+
+
+# Results
+
+## Data scope
+**Leave as example of the inline `r` integration**
+>A total of ` nrow(spotlight)` spotlight counts were conducted across the 21 transects between mid-1998 and mid-2015 (Table S1). There was a steep gradient in mean annual rainfall between the transects, but also wide seasonal and annual variability within transects (Figs. 1 and S1).  The numbers observed per spotlight km varied from ` round(min(spotlight$Rabbits/(spotlight$TransectLength/1000)), 1)` to ` round(max(spotlight$Rabbits/(spotlight$TransectLength/1000)), 1)` (mean ` round(mean(spotlight$Rabbits/(spotlight$TransectLength/1000)), 2)`) for rabbits and from ` round(min(spotlight$Foxes/(spotlight$TransectLength/1000)), 1)` to ` round(max(spotlight$Foxes/(spotlight$TransectLength/1000)), 1)` (mean ` round(mean(spotlight$Foxes/(spotlight$TransectLength/1000)), 2)`) for foxes.
+
+## Model convergence and fit
+
+Convergence of the model's parameters was judged to be adequate, with all $\hat{R}\leq$ ` round(max(samp$Rhat$beta, samp$Rhat$sigma, samp$Rhat$fox.lag, samp$Rhat$rabbit.lag, samp$Rhat$food.lag ), digits=2)`. Posterior predictive checks showed good agreement between the model and the data (Appendix S1).
+
+
+
+
+
+# Discussion
+
+
+
+
+Lasting effect of warren ripping treatments [@mcphee_long-term_2010, ramsey_recolonisation_2014]
+
+
+Expectation that climate change will reduce the rabbit problem in semi-arid areas [@scanlan_population_2006]
+
+
+
+
+# Authors' contributions
+
+
+# Acknowledgements
+We are grateful to Parks Victoria for their diligent record keeping, and to Lorraine Taylor, Dale Fuller, Matthew Baker for sharing these accumulated data, which represents the work of many parks staff of the State Government of Victoria over a period of almost 50 years (see below). We can claim no credit nor responsibility for the conception, design and collection of those data, only the assumptions, model building, and conclusions that comprise our report.
+
+Regarding the primary collection of rabbit spotlight data, we acknowledge the following Parks Victoria staff whose names are in the original data and provided here roughly in proportion to frequency of occurrence: S. Mott, M. Baker, D. Decker, D. Christian, S. Boschert, E. Parnaby, T. Vanliessum, J. Oakley, G. Roberts, L. Mitchell, J. Harker, J. Lamaro, O. Morley, R. Christian, V. Burns, S. Brown, and P. Stevens-Guiney.  Rowan Mott wrote code to efficiently extract data from MS Excel sheets where they were stored.
+
+
+# Data Accessibility
+
+\newpage
+# References
+
+<div id = "refs"></div>
+
+\newpage
+
+# Figure Legends
+
+**Figure 1.** 
+
+**Figure 2.** 
+
+**Figure 3.** 
+
+\newpage
+#Supporting Information
+Additional Supporting Information to be included in the online version of the article:
+
+**Table S1.** 
