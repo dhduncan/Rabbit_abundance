@@ -13,4 +13,4 @@ Figures/*
 *.tex
 R/query_database.R
 R/get_rip_dates.R
-
+.DS_Store
