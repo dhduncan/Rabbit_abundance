@@ -98,9 +98,9 @@ non_dynamic_rabbits_t <- sweep(env_matrix_rabbits, 1, site_r_effect_rabbits, "+"
 # use an AR1 model for the rabbit dynamics
 auto_coef <- normal(0, 1, truncation = c(-1, 1))
 proc_sd_rabbits <- positive()
-r_rabbits_expected <- r_rabbits <- mu_rabbits <- log_mu_rabbits <- zeros(n_times, n_sites)
-mu_rabbits[1, ] <- lognormal(log(4), 0.25, dim = n_sites)
-log_mu_rabbits[1, ] <- normal(log(4), 0.25, dim = n_sites)
+log_mu_rabbits_list <- list()
+log_mu_rabbits_init <- normal(log(4), 0.25, dim = c(1, n_sites))
+log_mu_rabbits_list[[1]] <- log_mu_rabbits_init
 
 # create a matrix of standard normal deviates here, for decentring and efficiency
 temporal_deviates_raw <- normal(0, 1, dim = c(n_times - 1, n_sites))
@@ -110,19 +110,13 @@ temporal_deviates  <- temporal_deviates_raw * proc_sd_rabbits
 # this is everything except the autoregressive part
 non_regressive_rabbits <- t(non_dynamic_rabbits_t)[-1, ] + temporal_deviates
 
-# Scroggie's model has log(mu.rabbits[tt-1, k]) added to log(m.rabbits[tt, k])
-# twice; once alone (in the last line of the loop) and once multiplied by
-# beta[5] (in the first line of the loop). We can do that slightly more
-# efficiently by using it once, and adding one to the coefficient (no effect on
-# inference, but this way the estimates should be comparable with the JAGS code)
-auto_coef_p1 <- 1 + auto_coef
-
 for (t in 2:n_times) {
-  autoregressive <- log_mu_rabbits[t - 1, ] * auto_coef_p1
-  log_mu_rabbits[t, ] <- autoregressive + non_regressive_rabbits[t - 1, ]
+  autoregressive <- log_mu_rabbits_list[[t - 1]] * auto_coef
+  log_mu_rabbits_list[[t]] <- autoregressive + non_regressive_rabbits[t - 1, ]
 }
 
 # move from the log density back to the density
+log_mu_rabbits <- do.call(rbind, log_mu_rabbits_list)
 mu_rabbits <- exp(log_mu_rabbits)
 
 # observation model
@@ -143,35 +137,43 @@ distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
 set.seed(2019-07-03)
 
-# it's a bit hard to specify initial values here, as some of these (particularly
-# proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
-# if they are too large, causing problems tuning the model during warmup
-inits <- replicate(4,
-                   initials(auto_coef = runif(1, -0.1, 0.1),
-                            proc_sd_rabbits = runif(1, 0, 0.1),
-                            survey_sd_rabbit = runif(1, 0, 0.1),
-                            site_sd_rabbits = runif(1, 0, 0.1),
-                            site_r_effect_rabbits_raw = rnorm(n_sites),
-                            r_mean_rabbits = rnorm(1, 0, 0.1),
-                            rain_coef = rnorm(1, 0, 0.1),
-                            winter_coef = rnorm(1, 0, 0.1),
-                            postrip_coef = rnorm(1, 0, 0.1),
-                            temporal_deviates_raw = array(
-                              rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
-                              dim = dim(temporal_deviates_raw)
-                            ),
-                            surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
-                   ),
-                   simplify = FALSE)
+# # it's a bit hard to specify initial values here, as some of these (particularly
+# # proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
+# # if they are too large, causing problems tuning the model during warmup
+# inits <- replicate(4,
+#                    initials(auto_coef = runif(1, -0.1, 0.1),
+#                             proc_sd_rabbits = runif(1, 0, 0.1),
+#                             survey_sd_rabbit = runif(1, 0, 0.1),
+#                             site_sd_rabbits = runif(1, 0, 0.1),
+#                             lag_weights_raw = runif(n_lag, 0, 1),
+#                             site_r_effect_rabbits_raw = rnorm(n_sites),
+#                             r_mean_rabbits = rnorm(1, 0, 0.1),
+#                             rain_coef = rnorm(1, 0, 0.1),
+#                             winter_coef = rnorm(1, 0, 0.1),
+#                             postrip_coef = rnorm(1, 0, 0.1),
+#                             temporal_deviates_raw = array(
+#                               rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
+#                               dim = dim(temporal_deviates_raw)
+#                             ),
+#                             log_mu_rabbits_init = t(rnorm(n_sites, 0, 0.1)),
+#                             surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
+#                    ),
+#                    simplify = FALSE)
+# 
+# # check inits to see if they would yield some reasonable number of rabbits
+# tmp <- calculate(expected_rabbits, values = inits[[1]])
 
-# check inits to see if they would yield some reasonable number of rabbits
-# tmp <- calculate(log_mu_rabbits, values = inits[[1]])
+m <- model(winter_coef, postrip_coef, rain_coef, auto_coef)
 
-m <- model(winter_coef, postrip_coef, rain_coef, auto_coef_p1)
-draws <- mcmc(m, initial_values = inits)
+# it's not using all the cores when running jointly, so split up thge chains
+# between processes
+future::plan("multisession")
+draws <- mcmc(m, sampler = hmc(Lmin = 15, Lmax = 30), warmup = 3000)
+
 plot(draws)
-
+# draws <- extra_samples(draws, 10000)
 
 # chi-sq discrepancies
-chi2_rabbit <- ((rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
-
+chi2_rabbit <- ((hier_dat$rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
+chi2_rabbit_draws <- calculate(chi2_rabbit, draws)
+chi2_rabbit_mn <- colMeans(as.matrix(chi2_rabbit_draws))
