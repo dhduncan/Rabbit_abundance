@@ -1,161 +1,177 @@
 # Convert Scrogster's JAGS model to greta model
-library(greta)
+
+# NB. for loops and indexing are slower in greta than vectorising things and
+# using matrix algebra, because it prevents tensorflow form parallelising
+# operations, and also increases the overhead in running the model. So a lot of
+# things here are pared down to make it more efficient. The for loop for the AR1
+# process in particular looks very different, beecause everything that could be
+# pre-computed has been.
+
+# I also replaced the indicator variables on relevant lags with a weighted sum,
+# which should mix much better.
+
+# I dropped the foxes, and the observation model is Poisson (lognormal), not zero-inflated
+# Poisson (lognormal), though we could potentially do the ZIP model
+
+load("prepped_data.Rdata")
 
 # make / adjust data object
 n_obs <- hier_dat$Nobs
 site_code <- hier_dat$site.code
 n_sites <- length(unique(hier_dat$site.code))
+n_lag <- dim(rain_lag_array)[3]
+n_times <- 40
+
+# need to
 
 
-#define priors
-mu_rabbits <- dlnorm(log(4), 2)
-site_sd <- lognormal(0,1)
-r_site_effect <- normal(0, site_sd, dim = n_sites)
+library(greta)
 
+# process model
+# starting abund (priors)
 
+# helper functions for Scroggie's positive and continuous priors
+continuous <- function(sd = 2.5, df = 1, dim = NULL) {
+  student(df, 0, sd, dim = dim)
+}
 
-design <- as.matrix(time_vars)
-coef_names <- colnames(design)
+positive <- function(sd = 1, df = 4, dim = NULL) {
+  student(df, 0, sd, truncation = c(0, Inf), dim = dim)
+}
 
-betas <- normal(0, 10, dim = ncol(time_vars)) # should be n cols in model matrix
+# random site effects on r.max for rabbit
+r_mean_rabbits <- continuous()
+site_sd_rabbits <- positive()
 
-env_effect <- design %*% betas
+# could use this:
+#   site_r_effect_rabbits <- normal(r_mean_rabbits, site_sd_rabbits, dim = n_sites)
+# but instead use decentred version of this hierarchical structure, for more efficient samplers
+# keep centred versions for plotting, or whatever
+site_r_effect_rabbits_raw <- normal(0, 1, dim = n_sites)
+site_r_effect_rabbits_centred <- site_r_effect_rabbits_raw * site_sd_rabbits
+site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 
-# organise data like greta wants it
-kai <- hier_dat$rabbit.count
+# lagged rain effect
+# create a rain effect matrix by sweeping a vector of probabilities over the rain array
 
-#process model
+# create a simplex of weights on different rain lags
+lag_weights_raw <- uniform(0, 1, dim = n_lag)
+lag_weights <- lag_weights_raw / sum(lag_weights_raw)
 
-site_r_eff <- normal(r_mean, site_sd, dim = n_sites)
+# get a weighted rain effect matrix, by applying these weights to the different
+# lags, and summing them. This is the same as marginalising the discrete lags
+# analytically, or assuming that all lags have some effect, and weighting them
+# all probabilistically. Should mix better than the discrete version and be as
+# interpretable
+rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
+rain_lag_array[is.na(rain_lag_array)] <- 0
+# reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
+rain_lag_array_long <- rain_lag_array
+dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
+weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
+weighted_rain_lags <- weighted_rain_lags_long
+dim(weighted_rain_lags) <- c(n_sites, n_times)
 
+# phew!
+
+# combine with the rain coefficient to get the rain effect
+rain_coef <- continuous()
+rain_effect <- weighted_rain_lags / 10 * rain_coef
+
+# get the temporal effects it looks like the winter and postrip variables rely
+# on the first 40 elements benig all the 40 timepoints :/
+winter <- hier_dat$winter[seq_len(n_times)]
+postrip <- hier_dat$postrip[seq_len(n_times)]
+
+winter_coef <- continuous()
+postrip_coef <- continuous()
+
+winter_effect <- winter * winter_coef
+postrip_effect <- postrip * winter_coef
+
+temporal_effect <- winter_effect + postrip_effect
+
+# build non-dynamic part of rabbit change matrix
+env_matrix_rabbits <- sweep(rain_effect, 2, temporal_effect, "+")
+non_dynamic_rabbits_t <- sweep(env_matrix_rabbits, 1, site_r_effect_rabbits, "+")
+
+# use an AR1 model for the rabbit dynamics
+auto_coef <- normal(0, 1, truncation = c(-1, 1))
+proc_sd_rabbits <- positive()
+r_rabbits_expected <- r_rabbits <- mu_rabbits <- log_mu_rabbits <- zeros(n_times, n_sites)
+mu_rabbits[1, ] <- lognormal(log(4), 0.25, dim = n_sites)
+log_mu_rabbits[1, ] <- normal(log(4), 0.25, dim = n_sites)
+
+# create a matrix of standard normal deviates here, for decentring and efficiency
+temporal_deviates_raw <- normal(0, 1, dim = c(n_times - 1, n_sites))
+temporal_deviates  <- temporal_deviates_raw * proc_sd_rabbits
+
+# we can combine the mean and innovation parts of the AR1 process in advance, so
+# this is everything except the autoregressive part
+non_regressive_rabbits <- t(non_dynamic_rabbits_t)[-1, ] + temporal_deviates
+
+# Scroggie's model has log(mu.rabbits[tt-1, k]) added to log(m.rabbits[tt, k])
+# twice; once alone (in the last line of the loop) and once multiplied by
+# beta[5] (in the first line of the loop). We can do that slightly more
+# efficiently by using it once, and adding one to the coefficient (no effect on
+# inference, but this way the estimates should be comparable with the JAGS code)
+auto_coef_p1 <- 1 + auto_coef
+
+for (t in 2:n_times) {
+  autoregressive <- log_mu_rabbits[t - 1, ] * auto_coef_p1
+  log_mu_rabbits[t, ] <- autoregressive + non_regressive_rabbits[t - 1, ]
+}
+
+# move from the log density back to the density
+mu_rabbits <- exp(log_mu_rabbits)
 
 # observation model
-distribution(kai) <- negative_binomial(size = , prob = mu_rabbits, dim = n_obs)
+survey_sd_rabbit <- positive()
+surv_err_rabbit_raw <- normal(0, 1, dim = n_obs)
+surv_err_rabbit <- surv_err_rabbit_raw * survey_sd_rabbit
+
+# pull the relevant bits out of the matrix of site/time combinations, into long
+# form matching the observations
+indices <- cbind(hier_dat$obs_time, hier_dat$site.code)
+log_mu_rabbits_obs <- log_mu_rabbits[indices]
+
+# poisson lognormal model
+log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) + surv_err_rabbit
+expected_rabbits <- exp(log_lambda_rabbits)
+distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
 
+set.seed(2019-07-03)
+
+# it's a bit hard to specify initial values here, as some of these (particularly
+# proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
+# if they are too large, causing problems tuning the model during warmup
+inits <- replicate(4,
+                   initials(auto_coef = runif(1, -0.1, 0.1),
+                            proc_sd_rabbits = runif(1, 0, 0.1),
+                            survey_sd_rabbit = runif(1, 0, 0.1),
+                            site_sd_rabbits = runif(1, 0, 0.1),
+                            site_r_effect_rabbits_raw = rnorm(n_sites),
+                            r_mean_rabbits = rnorm(1, 0, 0.1),
+                            rain_coef = rnorm(1, 0, 0.1),
+                            winter_coef = rnorm(1, 0, 0.1),
+                            postrip_coef = rnorm(1, 0, 0.1),
+                            temporal_deviates_raw = array(
+                              rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
+                              dim = dim(temporal_deviates_raw)
+                            ),
+                            surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
+                   ),
+                   simplify = FALSE)
+
+# check inits to see if they would yield some reasonable number of rabbits
+# tmp <- calculate(log_mu_rabbits, values = inits[[1]])
+
+m <- model(winter_coef, postrip_coef, rain_coef, auto_coef_p1)
+draws <- mcmc(m, initial_values = inits)
+plot(draws)
 
 
+# chi-sq discrepancies
+chi2_rabbit <- ((rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
 
-model{
-  for(k in 1:sites){
-    #process model
-    #starting abund (priors)
-    site.r.eff[k]~dnorm(r.mean , tau.site) #random site effects on r.max for fox
-    site.r.eff.rabbits[k]~dnorm(r.mean.rabbits, tau.site.rabbits) #random site effects on r.max for rabbit
-    
-    #non-heirarchically centred versions of the random effects for plotting
-    site.r.eff.centered[k]<-site.r.eff[k]-r.mean
-    site.r.eff.rabbits.centered[k]<-site.r.eff.rabbits[k]-r.mean.rabbits
-    mu.fox[5, k]~dlnorm(log(0.25), 1.5)
-    mu.rabbits[1, k]~dlnorm(log(4), 2)
-    for(t in 6:40){
-      ##-- process sub-model for foxes
-      r.fox.expected[t, k]<- log(mu.rabbits[t-food.lag, k])* beta[1] #numerical response to rabbit abundance
-      +log(mu.fox[t-1, k])*beta[2] #dense depend.
-      +rain_array[k,t,fox.lag]/10 *beta[3]
-      +winter[t]*beta[4]  #effect of winter on r
-      +site.r.eff[k]
-      r.fox[t, k]~dnorm(r.fox.expected[t, k], tau.proc)
-      mu.fox[t, k]<-mu.fox[t-1, k]*exp(r.fox[t, k])  
-    } #t
-    
-    for(tt in 2:40){
-      ##---process sub-model for rabbits
-      r.rabbits.expected[tt, k]<-  log(mu.rabbits[tt-1, k])* beta[5] 
-      +rain_array[k,tt,rabbit.lag]/10*beta[6] #rain effect of r.
-      +winter[tt]*beta[7] #effect of winter on rabbit r.
-      +postrip[tt]*beta[8] #ripping effect on rabbit r.
-      +site.r.eff.rabbits[k]
-      
-      r.rabbits[tt, k]~dnorm(r.rabbits.expected[tt, k], tau.proc.rabbits)
-      mu.rabbits[tt, k]<-mu.rabbits[tt-1, k]*exp(r.rabbits[tt, k]) 
-    } #tt
-    
-  } #k
-  ###################################
-  #observation models
-  ###################################
-  for(i in 1:Nobs){
-    
-    surv.err.fox[i]  ~dnorm(0, tau.survey.fox)
-    surv.err.rabbit[i] ~dnorm(0, tau.survey.rabbit)
-    
-    zero.fox[i]~dbern(p_zinf.fox) #indicator for structural non-zero
-    log(lambda.fox[i])<-log(mu.fox[obs_time[i], site.code[i]] ) +  log(trans.length[i]/1000) + surv.err.fox[i]
-    exp.fox[i]<-lambda.fox[i]*(1-zero.fox[i]) + 1e-10*zero.fox[i]
-    fox.count[i]~dpois(exp.fox[i]) #poisson obs model
-    fox.fake[i]~dpois(exp.fox[i])
-    
-    #real and fake chi-sq discrepancy
-    chi2.fox.real[i]<-pow((fox.count[i]-exp.fox[i]), 2)/(exp.fox[i]+0.5)
-    chi2.fox.fake[i]<-pow((fox.fake[i]-exp.fox[i]), 2)/(exp.fox[i]+0.5)
-    
-    zero.rabbit[i]~dbern(p_zinf.rabbit) #indicator for structural non-zero
-    log(lambda.rabbit[i])<-log(mu.rabbits[obs_time[i], site.code[i]] ) +  log(trans.length[i]/1000) + surv.err.rabbit[i]
-    exp.rabbit[i]<-lambda.rabbit[i]*(1-zero.rabbit[i]) + 1e-10*zero.rabbit[i]
-    rabbit.count[i]~dpois(exp.rabbit[i]) #poisson obs model
-    rabbit.fake[i]~dpois(exp.rabbit[i]) 
-    
-    #real and fake chi-sq discrepancy
-    chi2.rabbit.real[i]<-pow((rabbit.count[i]-exp.rabbit[i]), 2)/(exp.rabbit[i]+0.5)
-    chi2.rabbit.fake[i]<-pow((rabbit.fake[i]-exp.rabbit[i]), 2)/(exp.rabbit[i]+0.5)
-    
-  }#i
-  ###################################
-  #test statistics of posterior predictive checks
-  fit.fox<-sum(chi2.fox.real[])
-  fit.fox.fake<-sum(chi2.fox.fake[])
-  fox.fake.zeroes<-Nobs-sum(step(fox.fake[]-1))
-  
-  fit.rabbit<-sum(chi2.rabbit.real[])
-  fit.rabbit.fake<-sum(chi2.rabbit.fake[])
-  rabbit.fake.zeroes<-Nobs-sum(step(rabbit.fake[]-1))
-  
-  ###################################
-  #lagging indicator variables
-  ###################################
-  
-  fox.lag~dcat(rep(1, 30))
-  rabbit.lag~dcat(rep(1, 30))
-  food.lag~dcat(rep(1, 5))
-  
-  ###################################
-  #other priors
-  ###################################
-  
-  r.mean~dt(0, pow(2.5, -2), 1)
-  r.mean.rabbits~dt(0, pow(2.5, -2), 1)
-  
-  for(u in 1:8){beta[u]~dt(0, pow(2.5, -2), 1) }
-  
-  sigma.proc~dt(0, 1, 4)T(0, ) 
-  tau.proc<-pow(sigma.proc, -2)
-  
-  sigma.proc.rabbits~dt(0, 1, 4)T(0, ) 
-  tau.proc.rabbits<-pow(sigma.proc.rabbits, -2)
-  
-  sigma.site~dt(0, 1, 4)T(0, ) 
-  tau.site<-pow(sigma.site, -2)
-  
-  sigma.site.rabbits~dt(0, 1, 4)T(0, ) 
-  tau.site.rabbits<-pow(sigma.site.rabbits, -2)
-  
-  sigma.survey.fox~dt(0, 1, 4)T(0, ) 
-  tau.survey.fox<-pow(sigma.survey.rabbit, -2)
-  
-  sigma.survey.rabbit~dt(0, 1, 4)T(0, ) 
-  tau.survey.rabbit<-pow(sigma.survey.rabbit, -2)
-  
-  #storing sigmas in a vector for monitoring
-  sigma[1]<-sigma.proc
-  sigma[2]<-sigma.proc.rabbits
-  sigma[3]<-sigma.site
-  sigma[4]<-sigma.site.rabbits
-  sigma[5]<-sigma.survey.fox
-  sigma[6]<-sigma.survey.rabbit
-  
-  #zero inflation parameter for observation
-  p_zinf.fox~dbeta(1, 1)
-  p_zinf.rabbit~dbeta(1, 1)
-  
-}
