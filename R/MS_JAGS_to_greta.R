@@ -137,37 +137,43 @@ distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
 set.seed(2019-07-03)
 
-# it's a bit hard to specify initial values here, as some of these (particularly
-# proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
-# if they are too large, causing problems tuning the model during warmup
-inits <- replicate(4,
-                   initials(auto_coef = runif(1, -0.1, 0.1),
-                            proc_sd_rabbits = runif(1, 0, 0.1),
-                            survey_sd_rabbit = runif(1, 0, 0.1),
-                            site_sd_rabbits = runif(1, 0, 0.1),
-                            lag_weights_raw = runif(n_lag, 0, 1),
-                            site_r_effect_rabbits_raw = rnorm(n_sites),
-                            r_mean_rabbits = rnorm(1, 0, 0.1),
-                            rain_coef = rnorm(1, 0, 0.1),
-                            winter_coef = rnorm(1, 0, 0.1),
-                            postrip_coef = rnorm(1, 0, 0.1),
-                            temporal_deviates_raw = array(
-                              rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
-                              dim = dim(temporal_deviates_raw)
-                            ),
-                            log_mu_rabbits_init = t(rnorm(n_sites, 0, 0.1)),
-                            surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
-                   ),
-                   simplify = FALSE)
-
-# check inits to see if they would yield some reasonable number of rabbits
-tmp <- calculate(expected_rabbits, values = inits[[1]])
+# # it's a bit hard to specify initial values here, as some of these (particularly
+# # proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
+# # if they are too large, causing problems tuning the model during warmup
+# inits <- replicate(4,
+#                    initials(auto_coef = runif(1, -0.1, 0.1),
+#                             proc_sd_rabbits = runif(1, 0, 0.1),
+#                             survey_sd_rabbit = runif(1, 0, 0.1),
+#                             site_sd_rabbits = runif(1, 0, 0.1),
+#                             lag_weights_raw = runif(n_lag, 0, 1),
+#                             site_r_effect_rabbits_raw = rnorm(n_sites),
+#                             r_mean_rabbits = rnorm(1, 0, 0.1),
+#                             rain_coef = rnorm(1, 0, 0.1),
+#                             winter_coef = rnorm(1, 0, 0.1),
+#                             postrip_coef = rnorm(1, 0, 0.1),
+#                             temporal_deviates_raw = array(
+#                               rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
+#                               dim = dim(temporal_deviates_raw)
+#                             ),
+#                             log_mu_rabbits_init = t(rnorm(n_sites, 0, 0.1)),
+#                             surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
+#                    ),
+#                    simplify = FALSE)
+# 
+# # check inits to see if they would yield some reasonable number of rabbits
+# tmp <- calculate(expected_rabbits, values = inits[[1]])
 
 m <- model(winter_coef, postrip_coef, rain_coef, auto_coef)
-draws <- mcmc(m, warmup = 3000)  # , initial_values = inits)
-plot(draws)
 
+# it's not using all the cores when running jointly, so split up thge chains
+# between processes
+future::plan("multisession")
+draws <- mcmc(m, sampler = hmc(Lmin = 15, Lmax = 30), warmup = 3000)
+
+plot(draws)
+# draws <- extra_samples(draws, 10000)
 
 # chi-sq discrepancies
-chi2_rabbit <- ((rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
-
+chi2_rabbit <- ((hier_dat$rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
+chi2_rabbit_draws <- calculate(chi2_rabbit, draws)
+chi2_rabbit_mn <- colMeans(as.matrix(chi2_rabbit_draws))
