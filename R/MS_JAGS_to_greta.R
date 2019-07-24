@@ -1,12 +1,18 @@
 # Convert Scrogster's JAGS model to greta model
 
-# NG notes: for loops and indexing are slower in greta than vectorising things and using matrix algebra, because it prevents tensorflow form parallelising operations. They also increase the overhead in running the model. So a lot of things here are pared down to make it more efficient in processing. 
+# NG notes: for loops and indexing are slower in greta than vectorising things 
+# and using matrix algebra, because it prevents tensorflow form parallelising 
+# operations. They also increase the overhead in running the model. So a lot of 
+# things here are pared down to make it more efficient in processing. 
 
-# NG cont: The for loop for the AR1 process in particular looks very different, beecause everything that could be pre-computed has been.
+# NG cont: The for loop for the AR1 process in particular looks very different,
+# beecause everything that could be pre-computed has been.
 
-# NG: I also replaced the indicator variables on relevant lags with a weighted sum, which should mix much better.
+# NG: I also replaced the indicator variables on relevant lags with a weighted 
+# sum, which should mix much better.
 
-# NG: I dropped the foxes, and the observation model is Poisson (lognormal), not zero-inflated Poisson (lognormal), though we could potentially do the ZIP model
+# NG: I dropped the foxes, and the observation model is Poisson (lognormal), not
+# zero-inflated Poisson (lognormal), though we could potentially do the ZIP model
 
 load("prepped_data.Rdata")
 
@@ -27,7 +33,13 @@ library(greta)
 
 # helper functions for Scroggie's positive and continuous priors.
 
-# DD: Scroggie specified these as smoothed spike and slab distributions (a Student distribution with 1 df, so that they have fat tails to allocate more weight of probability to extreme values).  We couldn't get good mixing with those, so have retreated to Normal distributions.  Could go for something intermediate I guess (a Student distribution with higher df ??), but as NG points out you have to stop and think about whether in principle you believe those parameters could take extreme values.
+# DD: Scroggie specified these as smoothed spike and slab distributions (a 
+# Student distribution with 1 df, so that they have fat tails to allocate more 
+# weight of probability to extreme values).  We couldn't get good mixing with 
+# those, so have retreated to Normal distributions.  Could go for something 
+# intermediate I guess (a Student distribution with higher df ??), but as NG 
+# points out you have to stop and think about whether in principle you believe 
+# those parameters could take extreme values.
 
 continuous <- function(sd = 2.5, dim = NULL) {
   normal(0, sd, dim = dim)
@@ -79,8 +91,13 @@ site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 # rain_effect <- weighted_rain_lags / 10 * rain_coef
 
 rain_effect <- zeros(n_sites, n_times)
+<<<<<<< HEAD
 
 
+=======
+
+
+>>>>>>> b15fb4c0853a7eb233889e9c119ea588b5e7345a
 # get the temporal effects ---- 
 # NG: it looks like the winter and postrip variables rely on the first 40 elements being all the 40 timepoints :/
 winter <- hier_dat$winter[seq_len(n_times)]
@@ -133,7 +150,11 @@ surv_err_rabbit <- surv_err_rabbit_raw * survey_sd_rabbit
 indices <- cbind(hier_dat$obs_time, hier_dat$site.code)
 log_mu_rabbits_obs <- log_mu_rabbits[indices]
 
+<<<<<<< HEAD
 # poisson lognormal model ----
+=======
+# poisson lognormal model
+>>>>>>> b15fb4c0853a7eb233889e9c119ea588b5e7345a
 log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) #+ surv_err_rabbit
 
 expected_rabbits <- exp(log_lambda_rabbits)
