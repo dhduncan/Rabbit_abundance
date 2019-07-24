@@ -30,13 +30,16 @@ library(greta)
 # process model
 # starting abund (priors)
 
-# helper functions for Scroggie's positive and continuous priors
-continuous <- function(sd = 2.5, df = 1, dim = NULL) {
-  student(df, 0, sd, dim = dim)
+# helper functions for Scroggie's positive and continuous priors.
+
+# Scroggie specified these as smoothed spike and slab distributions (a Student distribution with 1 df, so that they have fat tails to allocate more weight of probability to extreme values).  We couldn't get good mixing with those, so have retreated to Normal distributions.  Could go for something intermediate I guess (a Student distribution with higher df), but as NG points out you have to stop and think about whether in principle you believe those parameters could take extreme values.
+
+continuous <- function(sd = 2.5, dim = NULL) {
+  normal(0, sd, dim = dim)
 }
 
-positive <- function(sd = 1, df = 4, dim = NULL) {
-  student(df, 0, sd, truncation = c(0, Inf), dim = dim)
+positive <- function(sd = 1, dim = NULL) {
+  normal(0, sd, truncation = c(0, Inf), dim = dim)
 }
 
 # random site effects on r.max for rabbit
@@ -131,7 +134,9 @@ log_mu_rabbits_obs <- log_mu_rabbits[indices]
 
 # poisson lognormal model
 log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) + surv_err_rabbit
+
 expected_rabbits <- exp(log_lambda_rabbits)
+
 distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
 
@@ -168,11 +173,13 @@ m <- model(winter_coef, postrip_coef, rain_coef, auto_coef)
 # it's not using all the cores when running jointly, so split up thge chains
 # between processes
 future::plan("multisession")
-draws <- mcmc(m, sampler = hmc(Lmin = 15, Lmax = 30), warmup = 3000)
+
+draws <- mcmc(m, sampler = hmc(Lmin = 40, Lmax = 40), warmup = 3000)
 
 plot(draws)
 # draws <- extra_samples(draws, 10000)
 
+devo <- calculate(temporal_deviates[1:4,1], draws)
 # chi-sq discrepancies
 chi2_rabbit <- ((hier_dat$rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
 chi2_rabbit_draws <- calculate(chi2_rabbit, draws)
