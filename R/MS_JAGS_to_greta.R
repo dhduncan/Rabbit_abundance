@@ -1,12 +1,51 @@
 # Convert Scrogster's JAGS model to greta model
 
-# NG notes: for loops and indexing are slower in greta than vectorising things and using matrix algebra, because it prevents tensorflow form parallelising operations. They also increase the overhead in running the model. So a lot of things here are pared down to make it more efficient in processing. 
+# NG notes: for loops and indexing are slower in greta than vectorising things
+# and using matrix algebra, because it prevents tensorflow form parallelising
+# operations. They also increase the overhead in running the model. So a lot of
+# things here are pared down to make it more efficient in processing.
 
-# NG cont: The for loop for the AR1 process in particular looks very different, beecause everything that could be pre-computed has been.
+# NG cont: The for loop for the AR1 process in particular looks very different,
+# beecause everything that could be pre-computed has been.
 
-# NG: I also replaced the indicator variables on relevant lags with a weighted sum, which should mix much better.
+# NG: I also replaced the indicator variables on relevant lags with a weighted
+# sum, which should mix much better.
 
-# NG: I dropped the foxes, and the observation model is Poisson (lognormal), not zero-inflated Poisson (lognormal), though we could potentially do the ZIP model
+# NG: I dropped the foxes, and the observation model is Poisson (lognormal), not
+# zero-inflated Poisson (lognormal), though we could potentially do the ZIP
+# model
+
+# alternative way to simulate AR1. Can expand the iterative equation:
+#   X_t = \rho X_{t-1} + epsilon_i
+# to
+#   X_t = \Sum_{i=0}^{n}(\epsilon_{t - n} \rho ^ n)
+# which can be simulated with elementwise matrix operations, and a matrix
+# multiplication. Sigma can be a vector with a different element per site
+ar1 <- function (rho, n_times, n_sites = 1, sigma = 1,
+                 innovations = normal(0, 1, dim = c(n_times, n_sites))) {
+  
+  # matrix of time modifiers
+  t_seq <- seq_len(n_times)
+  t_mat <- outer(t_seq, t_seq, FUN = "-")
+  t_mat <- pmax(t_mat, 0)
+  
+  # which elements to include (don't want upper triangular ones)
+  mask <- lower.tri(t_mat, diag = TRUE)
+  
+  # matrix of rho ^ n contributions
+  rho_mat <- (rho ^ t_mat) * mask
+  
+  # multiply by scaled innovations to get timeseries
+  if (length(sigma) == n_sites) {
+    innovations_scaled <- sweep(innovations, 2, sigma, "*")
+  } else if(length(sigma) == 1) {
+    innovations_scaled <- innovations * sigma
+  } else {
+    stop ("sigma must have either length 1 or length n_sites")
+  }
+  rho_mat %*% innovations_scaled
+  
+}
 
 load("prepped_data.Rdata")
 
@@ -17,17 +56,17 @@ n_sites <- length(unique(hier_dat$site.code))
 n_lag <- dim(rain_lag_array)[3]
 n_times <- 40
 
-
 library(greta)
-
-# process model ----
-
-
-# starting abund (priors) ----
 
 # helper functions for Scroggie's positive and continuous priors.
 
-# Scroggie specified these as smoothed spike and slab distributions (a Student distribution with 1 df, so that they have fat tails to allocate more weight of probability to extreme values).  We couldn't get good mixing with those, so have retreated to Normal distributions.  Could go for something intermediate I guess (a Student distribution with higher df), but as NG points out you have to stop and think about whether in principle you believe those parameters could take extreme values.
+# Scroggie specified these as smoothed spike and slab distributions (a Student
+# distribution with 1 df, so that they have fat tails to allocate more weight of
+# probability to extreme values).  We couldn't get good mixing with those, so
+# have retreated to Normal distributions.  Could go for something intermediate I
+# guess (a Student distribution with higher df), but as NG points out you have
+# to stop and think about whether in principle you believe those parameters
+# could take extreme values.
 
 continuous <- function(sd = 2.5, dim = NULL) {
   normal(0, sd, dim = dim)
@@ -50,7 +89,8 @@ site_r_effect_rabbits_centred <- site_r_effect_rabbits_raw * site_sd_rabbits
 site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 
 # lagged rain effect ----
-# create a rain effect matrix by sweeping a vector of probabilities over the rain array
+# create a rain effect matrix by sweeping a vector of probabilities over the
+# rain array
 
 # create a simplex of weights on different rain lags
 # lag_weights_raw <- uniform(0, 1, dim = n_lag)
@@ -99,34 +139,34 @@ env_matrix_rabbits <- sweep(rain_effect, 2, temporal_effect, "+")
 non_dynamic_rabbits_t <- sweep(env_matrix_rabbits, 1, site_r_effect_rabbits, "+")
 
 # use an AR1 model for the rabbit dynamics
-auto_coef <- normal(0, 1, truncation = c(-1, 1))
+auto_coef <- continuous()
 proc_sd_rabbits <- positive()
-log_mu_rabbits_list <- list()
-log_mu_rabbits_init <- normal(log(4), 0.25, dim = c(1, n_sites))
-log_mu_rabbits_list[[1]] <- log_mu_rabbits_init
 
-# create a matrix of standard normal deviates here, for decentring and efficiency
+# create a matrix of standard normal temporal deviates here, for decentring and
+# efficiency
 temporal_deviates_raw <- normal(0, 1, dim = c(n_times - 1, n_sites))
 temporal_deviates  <- temporal_deviates_raw * proc_sd_rabbits
 
-# we can combine the mean and innovation parts of the AR1 process in advance, so
-# this is everything except the autoregressive part
-non_regressive_rabbits <- t(non_dynamic_rabbits_t)[-1, ] + temporal_deviates
+# combine these with the other covariates of the (density-independent part of
+# the) log growth rates
+log_growth_rates <- t(non_dynamic_rabbits_t)[-1, ] + temporal_deviates
 
-for (t in 2:n_times) {
-  autoregressive <- log_mu_rabbits_list[[t - 1]] * auto_coef
-  log_mu_rabbits_list[[t]] <- autoregressive + non_regressive_rabbits[t - 1, ]
-}
+# initial population sizes
+log_mu_rabbits_init_raw <- normal(0, 1, dim = c(1, n_sites))
+log_mu_rabbits_init <- log(4) + log_mu_rabbits_init_raw * 0.25
 
-# move from the log density back to the density ----
-#log_mu_rabbits <- do.call(rbind, log_mu_rabbits_list)
-log_mu_rabbits <- non_dynamic_rabbits_t
-mu_rabbits <- exp(log_mu_rabbits)
+# solve the AR(1) process using these density-independent bits and the density
+# dependent part (autoregressive component controlled by auto_coef)
+innovations <- rbind(log_mu_rabbits_init,
+                     log_growth_rates)
 
-# observation model
-survey_sd_rabbit <- positive()
-surv_err_rabbit_raw <- normal(0, 1, dim = n_obs)
-surv_err_rabbit <- surv_err_rabbit_raw * survey_sd_rabbit
+log_mu_rabbits <- ar1(
+  rho = auto_coef,
+  n_times = n_times,
+  n_sites = n_sites,
+  sigma = 1,
+  innovations = innovations
+)
 
 # pull the relevant bits out of the matrix of site/time combinations, into long
 # form matching the observations
