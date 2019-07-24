@@ -118,9 +118,11 @@ rain_effect <- weighted_rain_lags / 10 * rain_coef
 
 
 # get the temporal effects ---- 
-# NG: it looks like the winter and postrip variables rely on the first 40 elements being all the 40 timepoints :/
-winter <- hier_dat$winter[seq_len(n_times)]
-postrip <- hier_dat$postrip[seq_len(n_times)]
+
+# looks like there was a bug in defining these variables in prepped_data!
+# guessing that they should look like this instead:
+postrip <- c(rep(0, 13), rep(1, 27))
+winter <- rep(c(0, 1), 20)
 
 winter_coef <- continuous()
 postrip_coef <- continuous()
