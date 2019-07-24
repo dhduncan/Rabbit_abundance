@@ -93,32 +93,28 @@ site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 # rain array
 
 # create a simplex of weights on different rain lags
-# lag_weights_raw <- uniform(0, 1, dim = n_lag)
-# lag_weights <- lag_weights_raw / sum(lag_weights_raw)
-# 
-# 
-# # get a weighted rain effect matrix, by applying these weights to the different
-# # lags, and summing them. This is the same as marginalising the discrete lags
-# # analytically, or assuming that all lags have some effect, and weighting them
-# # all probabilistically. Should mix better than the discrete version and be as
-# # interpretable
-# rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
-# rain_lag_array[is.na(rain_lag_array)] <- 0
-# # reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
-# rain_lag_array_long <- rain_lag_array
-# dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
-# weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
-# weighted_rain_lags <- weighted_rain_lags_long
-# dim(weighted_rain_lags) <- c(n_sites, n_times)
+lag_weights_raw <- uniform(0, 1, dim = n_lag)
+lag_weights <- lag_weights_raw / sum(lag_weights_raw)
 
-#weighted_rain_lags <- zeros(n_sites, n_times)
+# get a weighted rain effect matrix, by applying these weights to the different
+# lags, and summing them. This is the same as marginalising the discrete lags
+# analytically, or assuming that all lags have some effect, and weighting them
+# all probabilistically. Should mix better than the discrete version and be as
+# interpretable
+rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
+rain_lag_array[is.na(rain_lag_array)] <- 0
+# reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
+rain_lag_array_long <- rain_lag_array
+dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
+weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
+weighted_rain_lags <- weighted_rain_lags_long
+dim(weighted_rain_lags) <- c(n_sites, n_times)
+
 # phew!
 
 # combine with the rain coefficient to get the rain effect ----
-# rain_coef <- continuous()
-# rain_effect <- weighted_rain_lags / 10 * rain_coef
-
-rain_effect <- zeros(n_sites, n_times)
+rain_coef <- continuous()
+rain_effect <- weighted_rain_lags / 10 * rain_coef
 
 
 # get the temporal effects ---- 
