@@ -1,17 +1,12 @@
 # Convert Scrogster's JAGS model to greta model
 
-# NB. for loops and indexing are slower in greta than vectorising things and
-# using matrix algebra, because it prevents tensorflow form parallelising
-# operations, and also increases the overhead in running the model. So a lot of
-# things here are pared down to make it more efficient. The for loop for the AR1
-# process in particular looks very different, beecause everything that could be
-# pre-computed has been.
+# NG notes: for loops and indexing are slower in greta than vectorising things and using matrix algebra, because it prevents tensorflow form parallelising operations. They also increase the overhead in running the model. So a lot of things here are pared down to make it more efficient in processing. 
 
-# I also replaced the indicator variables on relevant lags with a weighted sum,
-# which should mix much better.
+# NG cont: The for loop for the AR1 process in particular looks very different, beecause everything that could be pre-computed has been.
 
-# I dropped the foxes, and the observation model is Poisson (lognormal), not zero-inflated
-# Poisson (lognormal), though we could potentially do the ZIP model
+# NG: I also replaced the indicator variables on relevant lags with a weighted sum, which should mix much better.
+
+# NG: I dropped the foxes, and the observation model is Poisson (lognormal), not zero-inflated Poisson (lognormal), though we could potentially do the ZIP model
 
 load("prepped_data.Rdata")
 
@@ -22,13 +17,13 @@ n_sites <- length(unique(hier_dat$site.code))
 n_lag <- dim(rain_lag_array)[3]
 n_times <- 40
 
-# need to
-
 
 library(greta)
 
-# process model
-# starting abund (priors)
+# process model ----
+
+
+# starting abund (priors) ----
 
 # helper functions for Scroggie's positive and continuous priors.
 
@@ -54,35 +49,40 @@ site_r_effect_rabbits_raw <- normal(0, 1, dim = n_sites)
 site_r_effect_rabbits_centred <- site_r_effect_rabbits_raw * site_sd_rabbits
 site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 
-# lagged rain effect
+# lagged rain effect ----
 # create a rain effect matrix by sweeping a vector of probabilities over the rain array
 
 # create a simplex of weights on different rain lags
-lag_weights_raw <- uniform(0, 1, dim = n_lag)
-lag_weights <- lag_weights_raw / sum(lag_weights_raw)
+# lag_weights_raw <- uniform(0, 1, dim = n_lag)
+# lag_weights <- lag_weights_raw / sum(lag_weights_raw)
+# 
+# 
+# # get a weighted rain effect matrix, by applying these weights to the different
+# # lags, and summing them. This is the same as marginalising the discrete lags
+# # analytically, or assuming that all lags have some effect, and weighting them
+# # all probabilistically. Should mix better than the discrete version and be as
+# # interpretable
+# rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
+# rain_lag_array[is.na(rain_lag_array)] <- 0
+# # reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
+# rain_lag_array_long <- rain_lag_array
+# dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
+# weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
+# weighted_rain_lags <- weighted_rain_lags_long
+# dim(weighted_rain_lags) <- c(n_sites, n_times)
 
-# get a weighted rain effect matrix, by applying these weights to the different
-# lags, and summing them. This is the same as marginalising the discrete lags
-# analytically, or assuming that all lags have some effect, and weighting them
-# all probabilistically. Should mix better than the discrete version and be as
-# interpretable
-rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
-rain_lag_array[is.na(rain_lag_array)] <- 0
-# reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
-rain_lag_array_long <- rain_lag_array
-dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
-weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
-weighted_rain_lags <- weighted_rain_lags_long
-dim(weighted_rain_lags) <- c(n_sites, n_times)
-
+#weighted_rain_lags <- zeros(n_sites, n_times)
 # phew!
 
-# combine with the rain coefficient to get the rain effect
-rain_coef <- continuous()
-rain_effect <- weighted_rain_lags / 10 * rain_coef
+# combine with the rain coefficient to get the rain effect ----
+# rain_coef <- continuous()
+# rain_effect <- weighted_rain_lags / 10 * rain_coef
 
-# get the temporal effects it looks like the winter and postrip variables rely
-# on the first 40 elements benig all the 40 timepoints :/
+rain_effect <- zeros(n_sites, n_times)
+
+
+# get the temporal effects ---- 
+# NG: it looks like the winter and postrip variables rely on the first 40 elements being all the 40 timepoints :/
 winter <- hier_dat$winter[seq_len(n_times)]
 postrip <- hier_dat$postrip[seq_len(n_times)]
 
@@ -118,8 +118,9 @@ for (t in 2:n_times) {
   log_mu_rabbits_list[[t]] <- autoregressive + non_regressive_rabbits[t - 1, ]
 }
 
-# move from the log density back to the density
-log_mu_rabbits <- do.call(rbind, log_mu_rabbits_list)
+# move from the log density back to the density ----
+#log_mu_rabbits <- do.call(rbind, log_mu_rabbits_list)
+log_mu_rabbits <- non_dynamic_rabbits_t
 mu_rabbits <- exp(log_mu_rabbits)
 
 # observation model
@@ -133,7 +134,7 @@ indices <- cbind(hier_dat$obs_time, hier_dat$site.code)
 log_mu_rabbits_obs <- log_mu_rabbits[indices]
 
 # poisson lognormal model
-log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) + surv_err_rabbit
+log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) #+ surv_err_rabbit
 
 expected_rabbits <- exp(log_lambda_rabbits)
 
@@ -174,7 +175,7 @@ m <- model(winter_coef, postrip_coef, rain_coef, auto_coef)
 # between processes
 future::plan("multisession")
 
-draws <- mcmc(m, sampler = hmc(Lmin = 40, Lmax = 40), warmup = 3000)
+draws <- mcmc(m, sampler = hmc(Lmin = 40, Lmax = 40), warmup = 2000)
 
 plot(draws)
 # draws <- extra_samples(draws, 10000)
