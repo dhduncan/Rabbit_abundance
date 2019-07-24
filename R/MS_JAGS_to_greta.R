@@ -80,10 +80,10 @@ positive <- function(sd = 1, dim = NULL) {
 r_mean_rabbits <- continuous()
 site_sd_rabbits <- positive()
 
-# could use this:
-#   site_r_effect_rabbits <- normal(r_mean_rabbits, site_sd_rabbits, dim = n_sites)
-# but instead use decentred version of this hierarchical structure, for more efficient samplers
-# keep centred versions for plotting, or whatever
+# # could use this:
+# #   site_r_effect_rabbits <- normal(r_mean_rabbits, site_sd_rabbits, dim = n_sites)
+# # but instead use decentred version of this hierarchical structure, for more efficient samplers
+# # keep centred versions for plotting, or whatever
 site_r_effect_rabbits_raw <- normal(0, 1, dim = n_sites)
 site_r_effect_rabbits_centred <- site_r_effect_rabbits_raw * site_sd_rabbits
 site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
@@ -171,13 +171,17 @@ log_mu_rabbits <- ar1(
 indices <- cbind(hier_dat$obs_time, hier_dat$site.code)
 log_mu_rabbits_obs <- log_mu_rabbits[indices]
 
-# poisson lognormal model
-log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) #+ surv_err_rabbit
-
+# observation models
+log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000)#  + surv_err_rabbit
 expected_rabbits <- exp(log_lambda_rabbits)
 
-distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
+# poisson
+# distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
+# convert to negative binomial observation parameters
+size <- normal(0, 10, truncation = c(0, Inf))
+prob <- 1 / (1 + expected_rabbits / size)
+distribution(hier_dat$rabbit.count) <- negative_binomial(size, prob)
 
 set.seed(2019-07-03)
 
