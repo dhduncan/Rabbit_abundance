@@ -91,13 +91,9 @@ site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 # rain_effect <- weighted_rain_lags / 10 * rain_coef
 
 rain_effect <- zeros(n_sites, n_times)
-<<<<<<< HEAD
 
 
-=======
 
-
->>>>>>> b15fb4c0853a7eb233889e9c119ea588b5e7345a
 # get the temporal effects ---- 
 # NG: it looks like the winter and postrip variables rely on the first 40 elements being all the 40 timepoints :/
 winter <- hier_dat$winter[seq_len(n_times)]
@@ -150,11 +146,8 @@ surv_err_rabbit <- surv_err_rabbit_raw * survey_sd_rabbit
 indices <- cbind(hier_dat$obs_time, hier_dat$site.code)
 log_mu_rabbits_obs <- log_mu_rabbits[indices]
 
-<<<<<<< HEAD
 # poisson lognormal model ----
-=======
-# poisson lognormal model
->>>>>>> b15fb4c0853a7eb233889e9c119ea588b5e7345a
+
 log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) #+ surv_err_rabbit
 
 expected_rabbits <- exp(log_lambda_rabbits)
