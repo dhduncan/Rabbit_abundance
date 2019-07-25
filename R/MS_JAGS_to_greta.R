@@ -8,11 +8,44 @@
 # NG cont: The for loop for the AR1 process in particular looks very different,
 # beecause everything that could be pre-computed has been.
 
-# NG: I also replaced the indicator variables on relevant lags with a weighted 
+# NG: I also replaced the indicator variables on relevant lags with a weighted
 # sum, which should mix much better.
 
 # NG: I dropped the foxes, and the observation model is Poisson (lognormal), not
-# zero-inflated Poisson (lognormal), though we could potentially do the ZIP model
+# zero-inflated Poisson (lognormal), though we could potentially do the ZIP
+# model
+
+# alternative way to simulate AR1. Can expand the iterative equation:
+#   X_t = \rho X_{t-1} + epsilon_i
+# to
+#   X_t = \Sum_{i=0}^{n}(\epsilon_{t - n} \rho ^ n)
+# which can be simulated with elementwise matrix operations, and a matrix
+# multiplication. Sigma can be a vector with a different element per site
+ar1 <- function (rho, n_times, n_sites = 1, sigma = 1,
+                 innovations = normal(0, 1, dim = c(n_times, n_sites))) {
+  
+  # matrix of time modifiers
+  t_seq <- seq_len(n_times)
+  t_mat <- outer(t_seq, t_seq, FUN = "-")
+  t_mat <- pmax(t_mat, 0)
+  
+  # which elements to include (don't want upper triangular ones)
+  mask <- lower.tri(t_mat, diag = TRUE)
+  
+  # matrix of rho ^ n contributions
+  rho_mat <- (rho ^ t_mat) * mask
+  
+  # multiply by scaled innovations to get timeseries
+  if (length(sigma) == n_sites) {
+    innovations_scaled <- sweep(innovations, 2, sigma, "*")
+  } else if(length(sigma) == 1) {
+    innovations_scaled <- innovations * sigma
+  } else {
+    stop ("sigma must have either length 1 or length n_sites")
+  }
+  rho_mat %*% innovations_scaled
+  
+}
 
 load("prepped_data.Rdata")
 
@@ -23,13 +56,7 @@ n_sites <- length(unique(hier_dat$site.code))
 n_lag <- dim(rain_lag_array)[3]
 n_times <- 40
 
-
 library(greta)
-
-# process model ----
-
-
-# starting abund (priors) ----
 
 # helper functions for Scroggie's positive and continuous priors.
 
@@ -62,42 +89,41 @@ site_r_effect_rabbits_centred <- site_r_effect_rabbits_raw * site_sd_rabbits
 site_r_effect_rabbits <- r_mean_rabbits + site_r_effect_rabbits_centred
 
 # lagged rain effect ----
-# create a rain effect matrix by sweeping a vector of probabilities over the rain array
+# create a rain effect matrix by sweeping a vector of probabilities over the
+# rain array
 
 # create a simplex of weights on different rain lags
-# lag_weights_raw <- uniform(0, 1, dim = n_lag)
-# lag_weights <- lag_weights_raw / sum(lag_weights_raw)
-# 
-# 
-# # get a weighted rain effect matrix, by applying these weights to the different
-# # lags, and summing them. This is the same as marginalising the discrete lags
-# # analytically, or assuming that all lags have some effect, and weighting them
-# # all probabilistically. Should mix better than the discrete version and be as
-# # interpretable
-# rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
-# rain_lag_array[is.na(rain_lag_array)] <- 0
-# # reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
-# rain_lag_array_long <- rain_lag_array
-# dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
-# weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
-# weighted_rain_lags <- weighted_rain_lags_long
-# dim(weighted_rain_lags) <- c(n_sites, n_times)
+lag_weights_raw <- uniform(0, 1, dim = n_lag)
+lag_weights <- lag_weights_raw / sum(lag_weights_raw)
 
-#weighted_rain_lags <- zeros(n_sites, n_times)
+# get a weighted rain effect matrix, by applying these weights to the different
+# lags, and summing them. This is the same as marginalising the discrete lags
+# analytically, or assuming that all lags have some effect, and weighting them
+# all probabilistically. Should mix better than the discrete version and be as
+# interpretable
+rain_lag_array <- rain_lag_array[, seq_len(n_times), ]
+rain_lag_array[is.na(rain_lag_array)] <- 0
+# reshape the array to a matrix, do a matrix multiply with thge weights, and then reshape :O
+rain_lag_array_long <- rain_lag_array
+dim(rain_lag_array_long) <- c(n_sites * n_times, n_lag)
+weighted_rain_lags_long <- rain_lag_array_long %*% lag_weights
+weighted_rain_lags <- weighted_rain_lags_long
+dim(weighted_rain_lags) <- c(n_sites, n_times)
+
 # phew!
 
 # combine with the rain coefficient to get the rain effect ----
-# rain_coef <- continuous()
-# rain_effect <- weighted_rain_lags / 10 * rain_coef
-
-rain_effect <- zeros(n_sites, n_times)
+rain_coef <- continuous()
+rain_effect <- weighted_rain_lags / 10 * rain_coef
 
 
 
 # get the temporal effects ---- 
-# NG: it looks like the winter and postrip variables rely on the first 40 elements being all the 40 timepoints :/
-winter <- hier_dat$winter[seq_len(n_times)]
-postrip <- hier_dat$postrip[seq_len(n_times)]
+
+# looks like there was a bug in defining these variables in prepped_data!
+# guessing that they should look like this instead:
+postrip <- c(rep(0, 13), rep(1, 27))
+winter <- rep(c(0, 1), 20)
 
 winter_coef <- continuous()
 postrip_coef <- continuous()
@@ -112,90 +138,56 @@ env_matrix_rabbits <- sweep(rain_effect, 2, temporal_effect, "+")
 non_dynamic_rabbits_t <- sweep(env_matrix_rabbits, 1, site_r_effect_rabbits, "+")
 
 # use an AR1 model for the rabbit dynamics
-auto_coef <- normal(0, 1, truncation = c(-1, 1))
+auto_coef <- continuous()
 proc_sd_rabbits <- positive()
-log_mu_rabbits_list <- list()
-log_mu_rabbits_init <- normal(log(4), 0.25, dim = c(1, n_sites))
-log_mu_rabbits_list[[1]] <- log_mu_rabbits_init
 
-# create a matrix of standard normal deviates here, for decentring and efficiency
+# create a matrix of standard normal temporal deviates here, for decentring and
+# efficiency
 temporal_deviates_raw <- normal(0, 1, dim = c(n_times - 1, n_sites))
 temporal_deviates  <- temporal_deviates_raw * proc_sd_rabbits
 
-# we can combine the mean and innovation parts of the AR1 process in advance, so
-# this is everything except the autoregressive part
-non_regressive_rabbits <- t(non_dynamic_rabbits_t)[-1, ] + temporal_deviates
+# combine these with the other covariates of the (density-independent part of
+# the) log growth rates
+log_growth_rates <- t(non_dynamic_rabbits_t)[-1, ] + temporal_deviates
 
-for (t in 2:n_times) {
-  autoregressive <- log_mu_rabbits_list[[t - 1]] * auto_coef
-  log_mu_rabbits_list[[t]] <- autoregressive + non_regressive_rabbits[t - 1, ]
-}
+# initial population sizes
+log_mu_rabbits_init_raw <- normal(0, 1, dim = c(1, n_sites))
+log_mu_rabbits_init <- log(4) + log_mu_rabbits_init_raw * 0.25
 
-# move from the log density back to the density ----
-#log_mu_rabbits <- do.call(rbind, log_mu_rabbits_list)
-log_mu_rabbits <- non_dynamic_rabbits_t
-mu_rabbits <- exp(log_mu_rabbits)
+# solve the AR(1) process using these density-independent bits and the density
+# dependent part (autoregressive component controlled by auto_coef)
+innovations <- rbind(log_mu_rabbits_init,
+                     log_growth_rates)
 
-# observation model ----
-survey_sd_rabbit <- positive()
-surv_err_rabbit_raw <- normal(0, 1, dim = n_obs)
-surv_err_rabbit <- surv_err_rabbit_raw * survey_sd_rabbit
+log_mu_rabbits <- ar1(
+  rho = auto_coef,
+  n_times = n_times,
+  n_sites = n_sites,
+  sigma = 1,
+  innovations = innovations
+)
 
 # pull the relevant bits out of the matrix of site/time combinations, into long
 # form matching the observations
 indices <- cbind(hier_dat$obs_time, hier_dat$site.code)
 log_mu_rabbits_obs <- log_mu_rabbits[indices]
 
-# poisson lognormal model ----
-
-log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000) #+ surv_err_rabbit
-
+# observation models
+log_lambda_rabbits <- log_mu_rabbits_obs +  log(hier_dat$trans.length / 1000)#  + surv_err_rabbit
 expected_rabbits <- exp(log_lambda_rabbits)
 
-distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
+# poisson
+# distribution(hier_dat$rabbit.count) <- poisson(expected_rabbits)
 
+# convert to negative binomial observation parameters
+size <- normal(0, 10, truncation = c(0, Inf))
+prob <- 1 / (1 + expected_rabbits / size)
+distribution(hier_dat$rabbit.count) <- negative_binomial(size, prob)
 
 set.seed(2019-07-03)
 
-# # it's a bit hard to specify initial values here, as some of these (particularly
-# # proc_sd_rabbits and auto_coef) make the predicted numbers of rabbits blow up
-# # if they are too large, causing problems tuning the model during warmup
-# inits <- replicate(4,
-#                    initials(auto_coef = runif(1, -0.1, 0.1),
-#                             proc_sd_rabbits = runif(1, 0, 0.1),
-#                             survey_sd_rabbit = runif(1, 0, 0.1),
-#                             site_sd_rabbits = runif(1, 0, 0.1),
-#                             lag_weights_raw = runif(n_lag, 0, 1),
-#                             site_r_effect_rabbits_raw = rnorm(n_sites),
-#                             r_mean_rabbits = rnorm(1, 0, 0.1),
-#                             rain_coef = rnorm(1, 0, 0.1),
-#                             winter_coef = rnorm(1, 0, 0.1),
-#                             postrip_coef = rnorm(1, 0, 0.1),
-#                             temporal_deviates_raw = array(
-#                               rnorm(prod(dim(temporal_deviates_raw)), 0, 0.1),
-#                               dim = dim(temporal_deviates_raw)
-#                             ),
-#                             log_mu_rabbits_init = t(rnorm(n_sites, 0, 0.1)),
-#                             surv_err_rabbit_raw = rnorm(n_obs, 0, 0.1)
-#                    ),
-#                    simplify = FALSE)
-# 
-# # check inits to see if they would yield some reasonable number of rabbits
-# tmp <- calculate(expected_rabbits, values = inits[[1]])
-
-m <- model(winter_coef, postrip_coef, rain_coef, auto_coef)
-
-# it's not using all the cores when running jointly, so split up the chains between processes
-future::plan("multisession")
-
-draws <- mcmc(m, sampler = hmc(Lmin = 40, Lmax = 40), warmup = 2000)
-
+m <- model(winter_coef, rain_coef, postrip_coef, auto_coef)
+system.time(
+  draws <- mcmc(m, sampler = hmc(Lmin = 30, Lmax = 40), warmup = 1000, chains = 32)
+)
 plot(draws)
-# draws <- extra_samples(draws, 10000) # can get extra samples to pick up where chains were left-off.
-
-sample_devos_in_time <- calculate(temporal_deviates[1:4,1], draws)
-
-# chi-sq discrepancies (post-predictive model check)
-chi2_rabbit <- ((hier_dat$rabbit.count - expected_rabbits) ^ 2) / (expected_rabbits + 0.5)
-chi2_rabbit_draws <- calculate(chi2_rabbit, draws)
-chi2_rabbit_mn <- colMeans(as.matrix(chi2_rabbit_draws))
