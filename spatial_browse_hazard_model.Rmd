@@ -47,7 +47,9 @@ The Wild European rabbit *Oryctolagus cuniculus* invaded much of the Australian 
 
 Recognised as major pest in Australia for well over a century. Rabbits have successfully and prolifically invaded almost all ecosystems in the southern 2/3 of the 
 
-To agriculture but also to conservation of biodiversity. Named as a threat to 21% (322) of listed species of plants and animals in Australia [@kearney_threats_2018].  Summarise mechanisms by which threat is manifest
+To agriculture but also to conservation of biodiversity. Named as a threat to 21% (322) of listed species of plants and animals in Australia [@kearney_threats_2018].  
+
+Summarise mechanisms by which threat is manifest
 
 Quantify the investment in controlling rabbits in \$ and also in years and person hours if it were possible  [@cooke2013economic]
 

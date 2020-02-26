@@ -187,7 +187,12 @@ distribution(hier_dat$rabbit.count) <- negative_binomial(size, prob)
 set.seed(2019-07-03)
 
 m <- model(winter_coef, rain_coef, postrip_coef, auto_coef)
+
+# WARNING! on Mac this takes about 87 minutes for warm up then sampling (chains = 32, warmup 3000 and samples 5000)
 system.time(
   draws <- mcmc(m, sampler = hmc(Lmin = 30, Lmax = 40), warmup = 3000, chains = 32, n_samples = 5000)
-)
-plot(draws)
+)  
+
+plot(draws)  # model is not reproducing Mike's results. Effect of rainfall is inverted, for example. To ponder and resolve!
+
+
