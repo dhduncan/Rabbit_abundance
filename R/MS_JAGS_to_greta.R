@@ -188,6 +188,6 @@ set.seed(2019-07-03)
 
 m <- model(winter_coef, rain_coef, postrip_coef, auto_coef)
 system.time(
-  draws <- mcmc(m, sampler = hmc(Lmin = 30, Lmax = 40), warmup = 1000, chains = 32)
+  draws <- mcmc(m, sampler = hmc(Lmin = 30, Lmax = 40), warmup = 3000, chains = 32, n_samples = 5000)
 )
 plot(draws)
